@@ -1,28 +1,36 @@
 import streamlit as st
-import pandas as pd
-import math
 import hashlib
+import base64
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey
+)
+from cryptography.hazmat.primitives import serialization
+from cryptography.exceptions import InvalidSignature
+
 
 # ==========================================
 # CONFIG
 # ==========================================
+
 st.set_page_config(
-    page_title="RSA Little Lab",
+    page_title="Digital Signature Lab",
     page_icon="🌷",
     layout="wide"
 )
 
+
 # ==========================================
 # CSS DESIGN
 # ==========================================
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
 
 .stApp {
     background: #FFE0EF;
     color: #594456;
-    font-family: 'DM Sans', sans-serif;
 }
 
 .block-container {
@@ -31,153 +39,89 @@ st.markdown("""
     padding-bottom: 3rem;
 }
 
-header[data-testid="stHeader"] {
-    background: transparent;
-}
-
 h1, h2, h3 {
-    font-family: 'Playfair Display', serif !important;
     color: #AD5D89 !important;
 }
 
 .hero {
-    background-color: #F7A9CD;
-    background-image: radial-gradient(
-        circle at 25px 0,
-        #FFE0EF 24px,
-        transparent 25px
-    );
-    background-size: 50px 50px;
-    background-repeat: repeat-x;
+    background: #F7A9CD;
     border-radius: 25px;
-    padding: 45px 25px 30px 25px;
+    padding: 40px 25px;
     text-align: center;
-    box-shadow: 0 6px 15px rgba(193, 111, 157, 0.12);
+    box-shadow: 0 6px 15px rgba(193,111,157,0.12);
 }
 
 .hero h1 {
-    font-size: 42px !important;
-    color: #FFFFFF !important;
-    margin-bottom: 0px;
+    color: white !important;
+    font-size: 40px;
 }
 
 .hero p {
     color: #FFF7FC;
     font-size: 16px;
-    margin-top: 8px;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #FFF9FC;
     border: 1.5px solid #F5C7DF;
-    border-radius: 22px;
+    border-radius: 20px;
     padding: 12px;
-}
-
-.stNumberInput input,
-.stTextInput input {
-    background: #FFF2F8 !important;
-    border: 1px solid #F1C4DB !important;
-    border-radius: 12px !important;
-    color: #77566B !important;
-}
-
-div[role="radiogroup"] {
-    background: #FFF8FC;
-    border: 1px solid #F3C7DE;
-    border-radius: 50px;
-    padding: 10px 18px;
-    width: fit-content;
 }
 
 .stButton > button {
     background: #F19BC5;
     color: white;
-    border: 0px;
-    border-radius: 14px;
-    padding: 8px 22px;
+    border: none;
+    border-radius: 12px;
     font-weight: 700;
-    transition: 0.2s;
+    padding: 8px 20px;
 }
 
 .stButton > button:hover {
     background: #DC7EAD;
     color: white;
-    border: 0px;
-    transform: translateY(-2px);
 }
 
-div[data-testid="stAlert"] {
-    border-radius: 16px;
-}
-
-div[data-testid="stDataFrame"] {
-    border: 1px solid #F3C7DE;
-    border-radius: 14px;
-    overflow: hidden;
+.stDownloadButton > button {
+    background: #E8A0C3;
+    color: white;
+    border-radius: 12px;
+    border: none;
 }
 
 div[data-testid="stMetric"] {
     background: #FFF0F8;
     border: 1px solid #F3C7DE;
-    border-radius: 18px;
+    border-radius: 15px;
     padding: 15px;
-}
-
-div[data-testid="stMetricLabel"] {
-    color: #B77D9F;
 }
 
 div[data-testid="stMetricValue"] {
     color: #A85587;
 }
 
-hr {
-    border-color: #F3C7DE !important;
-}
-
 .footer {
     text-align: center;
     color: #C17FA3;
-    padding: 25px 5px;
-    font-size: 14px;
+    padding: 25px;
 }
 
-@media (max-width: 768px) {
-    .hero h1 {
-        font-size: 30px !important;
-    }
-
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ==========================================
-# FUNCTIONS
+# SESSION STATE
 # ==========================================
 
-def cek_prima(angka):
-    if angka < 2:
-        return False
+if "private_key_pem" not in st.session_state:
+    st.session_state.private_key_pem = None
 
-    for i in range(2, int(math.sqrt(angka)) + 1):
-        if angka % i == 0:
-            return False
+if "public_key_pem" not in st.session_state:
+    st.session_state.public_key_pem = None
 
-    return True
-
-
-def cari_d(e, phi):
-    for d in range(1, phi):
-        if (e * d) % phi == 1:
-            return d
-
-    return None
+if "signature_data" not in st.session_state:
+    st.session_state.signature_data = None
 
 
 # ==========================================
@@ -186,8 +130,8 @@ def cari_d(e, phi):
 
 st.markdown("""
 <div class="hero">
-    <h1>🌷 RSA Little Lab 🌷</h1>
-    <p>♡ Turn your words into little secret codes ♡</p>
+    <h1>🌷 Digital Signature Lab 🌷</h1>
+    <p>♡ Secure your documents with digital signatures ♡</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -195,449 +139,303 @@ st.write("")
 
 st.markdown(
     "<p style='text-align:center;color:#B77D9F;'>"
-    "✿  Choose your magical operation  ✿"
+    "✿ Create keys · Sign documents · Verify signatures ✿"
     "</p>",
     unsafe_allow_html=True
 )
 
-proses = st.radio(
-    "Mode",
-    ["🔒 Enkripsi", "🔓 Dekripsi", "✍️ Digital Signature"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
-
-st.write("")
-
 
 # ==========================================
-# ENCRYPTION
+# GENERATE KEY PAIR
 # ==========================================
 
-if proses == "🔒 Enkripsi":
+st.markdown("## 🔑 Generate Digital Keys")
 
-    st.markdown("## 💌 Encrypt a Message")
-    st.caption("Masukkan kunci RSA dan pesan yang ingin kamu enkripsi.")
+with st.container(border=True):
 
-    with st.container(border=True):
+    st.write(
+        "Buat pasangan kunci yang terdiri dari "
+        "Private Key dan Public Key menggunakan Ed25519."
+    )
 
-        st.markdown("### ୨୧ RSA Keys")
+    if st.button("Generate Key Pair"):
 
-        col1, col2, col3 = st.columns(3)
+        private_key = Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
 
-        with col1:
-            p = st.number_input(
-                "Prime number (p)",
-                min_value=2,
-                value=11,
-                step=1
-            )
-
-        with col2:
-            q = st.number_input(
-                "Prime number (q)",
-                min_value=2,
-                value=13,
-                step=1
-            )
-
-        with col3:
-            e = st.number_input(
-                "Public exponent (e)",
-                min_value=2,
-                value=7,
-                step=1
-            )
-
-        pesan = st.text_input(
-            "♡ Your message",
-            placeholder="Type something sweet here..."
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
         )
 
-    if not cek_prima(p) or not cek_prima(q):
-        st.error("Oops! p dan q harus berupa bilangan prima.")
+        public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
 
-    elif p == q:
-        st.error("p dan q harus berbeda ya!")
+        st.session_state.private_key_pem = private_pem
+        st.session_state.public_key_pem = public_pem
+        st.session_state.signature_data = None
 
-    else:
-
-        n = p * q
-        phi = (p - 1) * (q - 1)
-        d = cari_d(e, phi)
-
-        st.markdown("### ✧ Key Summary ✧")
-
-        c1, c2, c3 = st.columns(3)
-
-        c1.metric("Modulus · n", n)
-        c2.metric("Euler Phi · φ", phi)
-        c3.metric("Private Key · d", d if d else "Invalid")
-
-        if math.gcd(e, phi) != 1:
-            st.error(
-                "e harus relatif prima dengan φ(n). "
-                "Coba gunakan nilai e yang lain."
-            )
-
-        elif d is None:
-            st.error("Kunci d tidak dapat ditemukan.")
-
-        else:
-
-            if pesan:
-
-                tabel = []
-                hasil = []
-                muat = True
-
-                for huruf in pesan:
-
-                    m = ord(huruf)
-
-                    if m >= n:
-                        muat = False
-
-                    cipher = pow(m, e, n)
-                    hasil.append(cipher)
-
-                    tabel.append({
-                        "Character": huruf,
-                        "ASCII (m)": m,
-                        "Encryption": f"{m}^{e} mod {n}",
-                        "Cipher (c)": cipher
-                    })
-
-                if not muat:
-
-                    st.warning(
-                        f"Kode ASCII pesan harus lebih kecil dari n = {n}. "
-                        "Gunakan p dan q yang lebih besar."
-                    )
-
-                else:
-
-                    st.markdown("### 🎀 Your Ciphertext")
-
-                    with st.container(border=True):
-
-                        st.markdown(
-                            "<p style='color:#C06B9A;font-weight:bold;'>"
-                            "✧ Secret code ✧</p>",
-                            unsafe_allow_html=True
-                        )
-
-                        st.code(
-                            " ".join(map(str, hasil)),
-                            language=None
-                        )
-
-                        st.caption(
-                            "Klik ikon copy pada kotak ciphertext untuk menyalin."
-                        )
-
-                    st.markdown("### 🌸 ASCII Transformation")
-
-                    st.dataframe(
-                        pd.DataFrame(tabel),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-
-                    st.success("Yay! Pesan berhasil dienkripsi ♡")
-
-                    st.markdown("### 🔑 Save these keys")
-
-                    st.code(f"n = {n}\nd = {d}")
-
-                    st.caption(
-                        "Simpan n dan d. Keduanya akan digunakan "
-                        "untuk proses dekripsi."
-                    )
-
-            else:
-                st.info("♡ Pesanmu masih kosong. Ketik pesan untuk memulai!")
+        st.success("Key pair berhasil dibuat!")
 
 
-# ==========================================
-# DECRYPTION
-# ==========================================
-
-elif proses == "🔓 Dekripsi":
-
-    st.markdown("## 💝 Decrypt a Message")
-    st.caption("Masukkan ciphertext dan kunci privat untuk membuka pesan.")
-
-    with st.container(border=True):
-
-        st.markdown("### ୨୧ Decryption Keys")
+    if st.session_state.private_key_pem:
 
         col1, col2 = st.columns(2)
 
         with col1:
-            n = st.number_input(
-                "Modulus (n)",
-                min_value=2,
-                value=143,
-                step=1
+            st.markdown("### 🔐 Private Key")
+
+            st.download_button(
+                "Download Private Key",
+                data=st.session_state.private_key_pem,
+                file_name="private_key.pem",
+                mime="application/x-pem-file"
             )
 
         with col2:
-            d = st.number_input(
-                "Private key (d)",
-                min_value=1,
-                value=103,
-                step=1
+            st.markdown("### 🔓 Public Key")
+
+            st.download_button(
+                "Download Public Key",
+                data=st.session_state.public_key_pem,
+                file_name="public_key.pem",
+                mime="application/x-pem-file"
             )
 
-        cipher_teks = st.text_input(
-            "♡ Ciphertext",
-            placeholder="Example: 72 117  ..."
+        st.warning(
+            "Simpan Private Key secara rahasia. "
+            "Jangan membagikannya kepada penerima dokumen."
         )
 
-    if cipher_teks:
-
-        try:
-
-            daftar = [int(x) for x in cipher_teks.split()]
-
-            tabel = []
-            hasil = ""
-
-            for c in daftar:
-
-                if c < 0 or c >= n:
-                    raise ValueError(
-                        f"Cipher {c} harus berada di antara 0 dan n-1."
-                    )
-
-                m = pow(c, d, n)
-
-                if not (0 <= m <= 0x10FFFF):
-                    raise ValueError(
-                        "Hasil dekripsi bukan kode karakter yang valid."
-                    )
-
-                huruf = chr(m)
-                hasil += huruf
-
-                tabel.append({
-                    "Cipher (c)": c,
-                    "Decryption": f"{c}^{d} mod {n}",
-                    "ASCII (m)": m,
-                    "Character": huruf
-                })
-
-            st.markdown("### ✨ Revealed Message")
-
-            with st.container(border=True):
-
-                st.markdown(
-                    "<p style='color:#C06B9A;font-weight:bold;'>"
-                    "♡ Your message ♡</p>",
-                    unsafe_allow_html=True
-                )
-
-                st.code(hasil, language=None)
-
-            st.markdown("### 🌷 Decryption Table")
-
-            st.dataframe(
-                pd.DataFrame(tabel),
-                use_container_width=True,
-                hide_index=True
-            )
-
-            st.success("Secret message successfully revealed! ♡")
-
-        except ValueError as err:
-
-            st.error(f"Input tidak valid: {err}")
-
     else:
+        st.info("Generate key pair terlebih dahulu.")
 
-        st.info("♡ Masukkan ciphertext untuk membuka pesan rahasia.")
+
+st.divider()
 
 
 # ==========================================
-# DIGITAL SIGNATURE
+# DIGITAL SIGNATURE OPERATIONS
 # ==========================================
 
-else:
+tab1, tab2 = st.tabs([
+    "✍️ Create Signature",
+    "🔍 Verify Signature"
+])
 
-    st.markdown("## ✍️ Digital Signature")
+
+# ==========================================
+# CREATE SIGNATURE
+# ==========================================
+
+with tab1:
+
+    st.markdown("## ✍️ Create Digital Signature")
+
     st.caption(
-        "Buat dan verifikasi tanda tangan digital menggunakan konsep RSA."
-    )
-
-    mode_signature = st.radio(
-        "Pilih Operasi",
-        ["Buat Signature", "Verifikasi Signature"],
-        horizontal=True,
-        key="mode_signature"
+        "Upload dokumen untuk menghasilkan hash "
+        "dan tanda tangan digital."
     )
 
     with st.container(border=True):
 
-        st.markdown("### ୨୧ RSA Keys")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            p_sig = st.number_input(
-                "Prime number (p)",
-                min_value=2,
-                value=61,
-                step=1,
-                key="p_signature"
-            )
-
-        with col2:
-            q_sig = st.number_input(
-                "Prime number (q)",
-                min_value=2,
-                value=53,
-                step=1,
-                key="q_signature"
-            )
-
-        with col3:
-            e_sig = st.number_input(
-                "Public exponent (e)",
-                min_value=2,
-                value=17,
-                step=1,
-                key="e_signature"
-            )
-
-        pesan_sig = st.text_input(
-            "♡ Your message",
-            placeholder="Type your message here...",
-            key="message_signature"
+        document = st.file_uploader(
+            "Upload your document",
+            key="sign_document"
         )
 
-        if mode_signature == "Verifikasi Signature":
-            signature_input = st.text_input(
-                "Digital Signature",
-                placeholder="Paste the signature number here...",
-                key="signature_to_verify"
-            )
-        else:
-            signature_input = ""
+        if st.button("Create Digital Signature"):
 
-    # Validasi bilangan prima
-    if not cek_prima(p_sig) or not cek_prima(q_sig):
-        st.error("p dan q harus berupa bilangan prima.")
+            if document is None:
 
-    elif p_sig == q_sig:
-        st.error("p dan q harus berbeda.")
+                st.error("Upload dokumen terlebih dahulu.")
 
-    else:
+            elif st.session_state.private_key_pem is None:
 
-        n_sig = p_sig * q_sig
-        phi_sig = (p_sig - 1) * (q_sig - 1)
-        d_sig = cari_d(e_sig, phi_sig)
-
-        if math.gcd(e_sig, phi_sig) != 1 or d_sig is None:
-            st.error(
-                "e harus relatif prima dengan φ(n). "
-                "Coba gunakan nilai e yang lain."
-            )
-
-        else:
-
-            st.markdown("### ✧ Key Summary ✧")
-
-            c1, c2, c3 = st.columns(3)
-
-            c1.metric("Modulus · n", n_sig)
-            c2.metric("Public Key · e", e_sig)
-            c3.metric("Private Key · d", d_sig)
-
-            if not pesan_sig:
-                st.info("♡ Masukkan pesan untuk memulai.")
+                st.error("Generate Key Pair terlebih dahulu.")
 
             else:
 
-                # Menghasilkan hash SHA-256
-                hash_value = hashlib.sha256(
-                    pesan_sig.encode("utf-8")
-                ).hexdigest()
+                # Membaca isi dokumen
+                document_data = document.getvalue()
 
-                # Mengubah hash menjadi angka
-                hash_number = int(hash_value, 16) % n_sig
+                # Membuat SHA-256 hash
+                document_hash = hashlib.sha256(
+                    document_data
+                ).digest()
 
-                st.markdown("### 🌸 Message Hash")
-                st.code(hash_value, language=None)
-
-                st.caption(
-                    f"Nilai hash untuk simulasi RSA: {hash_number}"
+                # Memuat private key
+                private_key = serialization.load_pem_private_key(
+                    st.session_state.private_key_pem,
+                    password=None
                 )
 
-                if mode_signature == "Buat Signature":
+                # Menandatangani hash menggunakan private key
+                signature = private_key.sign(document_hash)
 
-                    # Membuat signature dengan private key
-                    signature = pow(hash_number, d_sig, n_sig)
+                # Mengubah signature menjadi Base64
+                signature_base64 = base64.b64encode(
+                    signature
+                ).decode("utf-8")
 
-                    st.markdown("### 🎀 Your Digital Signature")
+                # Menyimpan hasil
+                st.session_state.signature_data = {
+                    "signature": signature_base64,
+                    "hash": document_hash.hex(),
+                    "filename": document.name
+                }
 
-                    with st.container(border=True):
-                        st.code(str(signature), language=None)
+                st.success("Digital Signature berhasil dibuat!")
+
+
+    if st.session_state.signature_data:
+
+        result = st.session_state.signature_data
+
+        st.markdown("### 🌸 Document Hash (SHA-256)")
+
+        st.code(result["hash"])
+
+        st.markdown("### 🎀 Digital Signature")
+
+        st.code(result["signature"])
+
+        st.download_button(
+            "Download Digital Signature",
+            data=result["signature"],
+            file_name="digital_signature.txt",
+            mime="text/plain"
+        )
+
+        st.caption(
+            "Signature ini dibuat menggunakan Private Key. "
+            "Simpan signature bersama dokumen yang ditandatangani."
+        )
+
+
+# ==========================================
+# VERIFY SIGNATURE
+# ==========================================
+
+with tab2:
+
+    st.markdown("## 🔍 Verify Digital Signature")
+
+    st.caption(
+        "Periksa keaslian dokumen menggunakan Public Key "
+        "dan Digital Signature."
+    )
+
+    with st.container(border=True):
+
+        verify_document = st.file_uploader(
+            "Upload document to verify",
+            key="verify_document"
+        )
+
+        public_key_file = st.file_uploader(
+            "Upload Public Key (.pem)",
+            type=["pem"],
+            key="verify_public_key"
+        )
+
+        signature_file = st.file_uploader(
+            "Upload Digital Signature (.txt)",
+            type=["txt"],
+            key="verify_signature"
+        )
+
+        if st.button("Verify Digital Signature"):
+
+            if (
+                verify_document is None
+                or public_key_file is None
+                or signature_file is None
+            ):
+
+                st.error("Lengkapi semua file terlebih dahulu.")
+
+            else:
+
+                try:
+
+                    # Membaca dokumen
+                    document_data = verify_document.getvalue()
+
+                    # Membuat ulang SHA-256 hash
+                    document_hash = hashlib.sha256(
+                        document_data
+                    ).digest()
+
+                    # Memuat public key
+                    public_key = serialization.load_pem_public_key(
+                        public_key_file.getvalue()
+                    )
+
+                    if not isinstance(public_key, Ed25519PublicKey):
+                        raise ValueError(
+                            "Public Key bukan format Ed25519."
+                        )
+
+                    # Membaca signature Base64
+                    signature_base64 = (
+                        signature_file.getvalue().decode("utf-8").strip()
+                    )
+
+                    signature = base64.b64decode(
+                        signature_base64,
+                        validate=True
+                    )
+
+                    # Memverifikasi signature
+                    public_key.verify(
+                        signature,
+                        document_hash
+                    )
 
                     st.success(
-                        "Digital Signature berhasil dibuat!"
+                        "SIGNATURE VALID! "
+                        "Dokumen sesuai dengan tanda tangan digital."
                     )
 
-                    st.caption(
-                        "Salin angka signature di atas. "
-                        "Gunakan pesan dan kunci yang sama saat verifikasi."
+                    st.markdown("### 🌸 Verification Result")
+
+                    col1, col2 = st.columns(2)
+
+                    col1.metric(
+                        "Document Status",
+                        "Authentic"
                     )
 
-                else:
+                    col2.metric(
+                        "Signature Status",
+                        "Valid"
+                    )
 
-                    if signature_input.strip():
+                    st.markdown("### SHA-256 Hash")
 
-                        try:
-                            signature_value = int(
-                                signature_input.strip()
-                            )
+                    st.code(document_hash.hex())
 
-                            if not 0 <= signature_value < n_sig:
-                                raise ValueError(
-                                    f"Signature harus berada di antara 0 dan {n_sig - 1}."
-                                )
+                except InvalidSignature:
 
-                            # Verifikasi dengan public key
-                            verified_hash = pow(
-                                signature_value,
-                                e_sig,
-                                n_sig
-                            )
+                    st.error(
+                        "SIGNATURE INVALID! "
+                        "Dokumen berubah atau signature tidak cocok "
+                        "dengan Public Key."
+                    )
 
-                            if verified_hash == hash_number:
+                except (ValueError, TypeError, UnicodeDecodeError) as err:
 
-                                st.success(
-                                    "SIGNATURE VALID! "
-                                    "Pesan sesuai dengan signature."
-                                )
+                    st.error(f"Input tidak valid: {err}")
 
-                            else:
+                except Exception:
 
-                                st.error(
-                                    "SIGNATURE TIDAK VALID! "
-                                    "Pesan atau signature tidak cocok."
-                                )
-
-                        except ValueError as err:
-
-                            st.error(f"Input tidak valid: {err}")
-
-                    else:
-
-                        st.info(
-                            "Masukkan signature dari proses "
-                            "'Buat Signature' untuk melakukan verifikasi."
-                        )
+                    st.error(
+                        "Terjadi kesalahan saat memproses file atau key."
+                    )
 
 
 # ==========================================
@@ -646,9 +444,10 @@ else:
 
 st.markdown("""
 <div class="footer">
-    ✿ ─────── made with love & mathematics ─────── ✿<br>
+    ✿ ───── made with love & mathematics ───── ✿
+    <br>
     <span style="font-size:12px;">
-        RSA Little Lab · Encrypt your little secrets ♡
+        Digital Signature Lab · Secure your documents ♡
     </span>
 </div>
 """, unsafe_allow_html=True)

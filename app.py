@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import math
+import hashlib
 
 # ==========================================
 # CONFIG
@@ -24,25 +25,21 @@ st.markdown("""
     font-family: 'DM Sans', sans-serif;
 }
 
-/* Main width */
 .block-container {
     max-width: 1050px;
     padding-top: 2rem;
     padding-bottom: 3rem;
 }
 
-/* Hide default header */
 header[data-testid="stHeader"] {
     background: transparent;
 }
 
-/* Headings */
 h1, h2, h3 {
     font-family: 'Playfair Display', serif !important;
     color: #AD5D89 !important;
 }
 
-/* Scallop header */
 .hero {
     background-color: #F7A9CD;
     background-image: radial-gradient(
@@ -70,7 +67,6 @@ h1, h2, h3 {
     margin-top: 8px;
 }
 
-/* Cards */
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #FFF9FC;
     border: 1.5px solid #F5C7DF;
@@ -78,7 +74,6 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     padding: 12px;
 }
 
-/* Inputs */
 .stNumberInput input,
 .stTextInput input {
     background: #FFF2F8 !important;
@@ -87,7 +82,6 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     color: #77566B !important;
 }
 
-/* Radio */
 div[role="radiogroup"] {
     background: #FFF8FC;
     border: 1px solid #F3C7DE;
@@ -96,7 +90,6 @@ div[role="radiogroup"] {
     width: fit-content;
 }
 
-/* Buttons */
 .stButton > button {
     background: #F19BC5;
     color: white;
@@ -114,19 +107,16 @@ div[role="radiogroup"] {
     transform: translateY(-2px);
 }
 
-/* Success box */
 div[data-testid="stAlert"] {
     border-radius: 16px;
 }
 
-/* Table */
 div[data-testid="stDataFrame"] {
     border: 1px solid #F3C7DE;
     border-radius: 14px;
     overflow: hidden;
 }
 
-/* Metrics */
 div[data-testid="stMetric"] {
     background: #FFF0F8;
     border: 1px solid #F3C7DE;
@@ -142,12 +132,10 @@ div[data-testid="stMetricValue"] {
     color: #A85587;
 }
 
-/* Divider */
 hr {
     border-color: #F3C7DE !important;
 }
 
-/* Footer */
 .footer {
     text-align: center;
     color: #C17FA3;
@@ -155,11 +143,11 @@ hr {
     font-size: 14px;
 }
 
-/* Small screens */
 @media (max-width: 768px) {
     .hero h1 {
         font-size: 30px !important;
     }
+
     .block-container {
         padding-left: 1rem;
         padding-right: 1rem;
@@ -188,6 +176,7 @@ def cari_d(e, phi):
     for d in range(1, phi):
         if (e * d) % phi == 1:
             return d
+
     return None
 
 
@@ -213,7 +202,7 @@ st.markdown(
 
 proses = st.radio(
     "Mode",
-    ["🔒 Enkripsi", "🔓 Dekripsi"],
+    ["🔒 Enkripsi", "🔓 Dekripsi", "✍️ Digital Signature"],
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -265,7 +254,6 @@ if proses == "🔒 Enkripsi":
             placeholder="Type something sweet here..."
         )
 
-    # Validasi p dan q
     if not cek_prima(p) or not cek_prima(q):
         st.error("Oops! p dan q harus berupa bilangan prima.")
 
@@ -375,7 +363,7 @@ if proses == "🔒 Enkripsi":
 # DECRYPTION
 # ==========================================
 
-else:
+elif proses == "🔓 Dekripsi":
 
     st.markdown("## 💝 Decrypt a Message")
     st.caption("Masukkan ciphertext dan kunci privat untuk membuka pesan.")
@@ -404,7 +392,7 @@ else:
 
         cipher_teks = st.text_input(
             "♡ Ciphertext",
-            placeholder="Example: 72 117  ...",
+            placeholder="Example: 72 117  ..."
         )
 
     if cipher_teks:
@@ -478,12 +466,15 @@ else:
 else:
 
     st.markdown("## ✍️ Digital Signature")
-    st.caption("Buat dan verifikasi tanda tangan digital menggunakan RSA.")
+    st.caption(
+        "Buat dan verifikasi tanda tangan digital menggunakan konsep RSA."
+    )
 
     mode_signature = st.radio(
         "Pilih Operasi",
         ["Buat Signature", "Verifikasi Signature"],
-        horizontal=True
+        horizontal=True,
+        key="mode_signature"
     )
 
     with st.container(border=True):
@@ -493,62 +484,65 @@ else:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            p = st.number_input(
+            p_sig = st.number_input(
                 "Prime number (p)",
                 min_value=2,
                 value=61,
                 step=1,
-                key="sig_p"
+                key="p_signature"
             )
 
         with col2:
-            q = st.number_input(
+            q_sig = st.number_input(
                 "Prime number (q)",
                 min_value=2,
                 value=53,
                 step=1,
-                key="sig_q"
+                key="q_signature"
             )
 
         with col3:
-            e = st.number_input(
+            e_sig = st.number_input(
                 "Public exponent (e)",
                 min_value=2,
                 value=17,
                 step=1,
-                key="sig_e"
+                key="e_signature"
             )
 
-        pesan = st.text_input(
+        pesan_sig = st.text_input(
             "♡ Your message",
             placeholder="Type your message here...",
-            key="sig_message"
+            key="message_signature"
         )
-
-        signature_input = ""
 
         if mode_signature == "Verifikasi Signature":
             signature_input = st.text_input(
                 "Digital Signature",
-                placeholder="Enter your signature...",
-                key="sig_input"
+                placeholder="Paste the signature number here...",
+                key="signature_to_verify"
             )
+        else:
+            signature_input = ""
 
-    # Validasi kunci
-    if not cek_prima(p) or not cek_prima(q):
+    # Validasi bilangan prima
+    if not cek_prima(p_sig) or not cek_prima(q_sig):
         st.error("p dan q harus berupa bilangan prima.")
 
-    elif p == q:
+    elif p_sig == q_sig:
         st.error("p dan q harus berbeda.")
 
     else:
 
-        n = p * q
-        phi = (p - 1) * (q - 1)
-        d = cari_d(e, phi)
+        n_sig = p_sig * q_sig
+        phi_sig = (p_sig - 1) * (q_sig - 1)
+        d_sig = cari_d(e_sig, phi_sig)
 
-        if math.gcd(e, phi) != 1 or d is None:
-            st.error("Nilai e harus relatif prima dengan phi(n).")
+        if math.gcd(e_sig, phi_sig) != 1 or d_sig is None:
+            st.error(
+                "e harus relatif prima dengan φ(n). "
+                "Coba gunakan nilai e yang lain."
+            )
 
         else:
 
@@ -556,78 +550,95 @@ else:
 
             c1, c2, c3 = st.columns(3)
 
-            c1.metric("Modulus · n", n)
-            c2.metric("Public Key · e", e)
-            c3.metric("Private Key · d", d)
+            c1.metric("Modulus · n", n_sig)
+            c2.metric("Public Key · e", e_sig)
+            c3.metric("Private Key · d", d_sig)
 
-            if pesan:
+            if not pesan_sig:
+                st.info("♡ Masukkan pesan untuk memulai.")
 
-                # Menghasilkan hash pesan
+            else:
+
+                # Menghasilkan hash SHA-256
                 hash_value = hashlib.sha256(
-                    pesan.encode()
+                    pesan_sig.encode("utf-8")
                 ).hexdigest()
 
                 # Mengubah hash menjadi angka
-                hash_number = int(hash_value, 16) % n
+                hash_number = int(hash_value, 16) % n_sig
 
                 st.markdown("### 🌸 Message Hash")
+                st.code(hash_value, language=None)
 
-                st.code(hash_value)
+                st.caption(
+                    f"Nilai hash untuk simulasi RSA: {hash_number}"
+                )
 
                 if mode_signature == "Buat Signature":
 
-                    # Membuat tanda tangan digital
-                    signature = pow(hash_number, d, n)
+                    # Membuat signature dengan private key
+                    signature = pow(hash_number, d_sig, n_sig)
 
                     st.markdown("### 🎀 Your Digital Signature")
 
-                    st.code(str(signature))
+                    with st.container(border=True):
+                        st.code(str(signature), language=None)
 
                     st.success(
                         "Digital Signature berhasil dibuat!"
                     )
 
                     st.caption(
-                        "Simpan pesan dan signature untuk proses verifikasi."
+                        "Salin angka signature di atas. "
+                        "Gunakan pesan dan kunci yang sama saat verifikasi."
                     )
 
                 else:
 
-                    if signature_input:
+                    if signature_input.strip():
 
                         try:
-                            signature = int(signature_input)
+                            signature_value = int(
+                                signature_input.strip()
+                            )
 
-                            if not 0 <= signature < n:
+                            if not 0 <= signature_value < n_sig:
                                 raise ValueError(
-                                    "Signature harus berada di antara 0 dan n-1."
+                                    f"Signature harus berada di antara 0 dan {n_sig - 1}."
                                 )
 
-                            # Verifikasi menggunakan public key
+                            # Verifikasi dengan public key
                             verified_hash = pow(
-                                signature, e, n
+                                signature_value,
+                                e_sig,
+                                n_sig
                             )
 
                             if verified_hash == hash_number:
 
                                 st.success(
-                                    "Signature VALID! Pesan asli dan tidak berubah."
+                                    "SIGNATURE VALID! "
+                                    "Pesan sesuai dengan signature."
                                 )
 
                             else:
 
                                 st.error(
-                                    "Signature TIDAK VALID! "
-                                    "Pesan mungkin telah diubah."
+                                    "SIGNATURE TIDAK VALID! "
+                                    "Pesan atau signature tidak cocok."
                                 )
 
                         except ValueError as err:
 
                             st.error(f"Input tidak valid: {err}")
 
-            else:
+                    else:
 
-                st.info("♡ Masukkan pesan untuk memulai.")
+                        st.info(
+                            "Masukkan signature dari proses "
+                            "'Buat Signature' untuk melakukan verifikasi."
+                        )
+
 
 # ==========================================
 # FOOTER
@@ -641,4 +652,3 @@ st.markdown("""
     </span>
 </div>
 """, unsafe_allow_html=True)
-
